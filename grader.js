@@ -24,8 +24,10 @@ References:
 var fs = require('fs');
 var program = require('commander');
 var cheerio = require('cheerio');
+var rest = require('restler');
 var HTMLFILE_DEFAULT = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
+var URL_DEFAULT = "http://lit-wave-6024.herokuapp.com/";
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
@@ -36,6 +38,15 @@ var assertFileExists = function(infile) {
     return instr;
 };
 
+var assertInvalidUrl = function(url) {
+	var instr = url.toString();
+	if (instr.substring(0,7)=="http://" || instr.substring(0,8)=="https://") return instr;
+	else {
+		console.log("%s is an invalid URL. Exiting.", instr);
+		process.exit(1);
+	}
+}
+
 var cheerioHtmlFile = function(htmlfile) {
     return cheerio.load(fs.readFileSync(htmlfile));
 };
@@ -44,8 +55,18 @@ var loadChecks = function(checksfile) {
     return JSON.parse(fs.readFileSync(checksfile));
 };
 
-var checkHtmlFile = function(htmlfile, checksfile) {
-    $ = cheerioHtmlFile(htmlfile);
+var buildfn = function(checksfile) {
+    var response2checkInput = function(result, response) {
+        if (result instanceof Error) {
+            console.error('Error: ' + util.format(response.message));
+        } else {
+            checkInput(result, checksfile);
+        }
+    };
+    return response2checkInput;
+};
+
+var checkInput = function($, checksfile) {
     var checks = loadChecks(checksfile).sort();
     var out = {};
     for(var ii in checks) {
@@ -65,8 +86,14 @@ if(require.main == module) {
     program
         .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
         .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+        .option('-u, --url <url>', 'URL', clone(assertInvalidUrl), URL_DEFAULT)
         .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
+    if (program.file != null) {
+    	checkJson = checkInput(cheerioHtmlFile(program.file), program.checks);
+	} else {
+		var response2checkInput = buildfn(program.checks);
+    	rest.get(program.url).on('complete', response2checkInput);
+	}
     var outJson = JSON.stringify(checkJson, null, 4);
     console.log(outJson);
 } else {
